@@ -11,7 +11,7 @@ npm run dev
 
 打开 http://localhost:3000。
 
-没有配置环境变量时，应用会进入本地体验模式：登录和历史保存在浏览器本地，分析接口返回演示报告，方便直接验证流程。
+没有配置环境变量时，应用会进入本地体验模式：登录和历史保存在浏览器本地，分析接口返回演示报告，方便直接验证流程。配置 Supabase 后，登录会切到 Supabase Auth，历史报告会保存到云端。
 
 ## 环境变量
 
@@ -44,7 +44,30 @@ OPENAI_MODEL=deepseek-v4-flash
 
 ## Supabase
 
-云端保存的数据表草案在 `supabase/schema.sql`。当前 MVP 已保留 Supabase 配置位，默认先使用本地历史保存；下一步可把历史读写切到 Supabase。
+P1 已支持 Supabase Auth 和云端历史保存。未配置 Supabase 时仍会回退到本地体验模式。
+
+配置步骤：
+
+1. 在 Supabase 控制台创建项目。
+2. 打开项目的 SQL Editor，执行 `supabase/schema.sql`。
+3. 在 Project Settings -> API 复制 Project URL 和 anon public key。
+4. 写入 `.env.local`：
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=你的 Project URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY=你的 anon public key
+```
+
+5. 在 Authentication -> URL Configuration 中，把本地开发地址加入允许列表：
+
+```text
+Site URL: http://localhost:3000
+Redirect URLs: http://localhost:3000
+```
+
+生产部署后，把正式域名也加入 Site URL 和 Redirect URLs。
+
+登录方式使用邮箱 magic link。输入邮箱后，Supabase 会发送登录链接；点击邮件里的链接回到应用后，历史报告会从 `review_reports` 读取，并按当前登录用户隔离。
 
 ## 文档
 

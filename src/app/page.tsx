@@ -30,8 +30,15 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { emptyInput } from "@/lib/demo-report";
+import {
+  isSupabaseConfigured,
+  reviewInputToInsert,
+  reviewRowToSavedReview,
+  supabase,
+} from "@/lib/supabase";
 import type { JobType, ReviewInput, ReviewReport, SavedReview } from "@/types/review";
 
 const jobTypes: JobType[] = ["运营", "产品经理", "数据分析", "研发", "设计", "市场", "其他"];
@@ -203,10 +210,13 @@ function inferInputFromExtractedText(text: string, current: ReviewInput): Review
 
 export default function Home() {
   const [userEmail, setUserEmail] = useState("");
+  const [userId, setUserId] = useState("");
   const [emailDraft, setEmailDraft] = useState("");
   const [input, setInput] = useState<ReviewInput>(emptyInput);
   const [report, setReport] = useState<ReviewReport | null>(null);
   const [history, setHistory] = useState<SavedReview[]>([]);
+  const [isAuthLoading, setIsAuthLoading] = useState(isSupabaseConfigured);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisStageIndex, setAnalysisStageIndex] = useState<number | null>(null);
   const [isExtractingDocx, setIsExtractingDocx] = useState(false);
@@ -215,26 +225,96 @@ export default function Home() {
   const [analysisMode, setAnalysisMode] = useState<"demo" | "openai" | "compatible" | null>(
     null,
   );
+  const authMode = isSupabaseConfigured ? "cloud" : "local";
+
+  const loadCloudHistory = useCallback(async (email: string) => {
+    if (!supabase) return;
+
+    setIsHistoryLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("review_reports")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(30);
+
+      if (error) {
+        throw error;
+      }
+
+      setHistory((data || []).map((row) => reviewRowToSavedReview(row, email)));
+    } catch (error) {
+      setHistory([]);
+      setMessage(error instanceof Error ? `读取云端历史失败：${error.message}` : "读取云端历史失败。");
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const storedUser = window.localStorage.getItem(userKey);
-    const storedHistory = window.localStorage.getItem(historyKey);
+    if (!isSupabaseConfigured || !supabase) {
+      const storedUser = window.localStorage.getItem(userKey);
+      const storedHistory = window.localStorage.getItem(historyKey);
 
-    queueMicrotask(() => {
-      if (storedUser) {
-        setUserEmail(storedUser);
-        setEmailDraft(storedUser);
-      }
-
-      if (storedHistory) {
-        try {
-          setHistory(JSON.parse(storedHistory) as SavedReview[]);
-        } catch {
-          window.localStorage.removeItem(historyKey);
+      queueMicrotask(() => {
+        if (storedUser) {
+          setUserEmail(storedUser);
+          setEmailDraft(storedUser);
         }
+
+        if (storedHistory) {
+          try {
+            setHistory(JSON.parse(storedHistory) as SavedReview[]);
+          } catch {
+            window.localStorage.removeItem(historyKey);
+          }
+        }
+
+        setIsAuthLoading(false);
+      });
+
+      return;
+    }
+
+    let isMounted = true;
+
+    async function applySession(session: Session | null) {
+      if (!isMounted) return;
+
+      const email = session?.user.email || "";
+      setUserEmail(email);
+      setEmailDraft(email);
+      setUserId(session?.user.id || "");
+
+      if (email) {
+        await loadCloudHistory(email);
+      } else {
+        setHistory([]);
       }
+    }
+
+    void supabase.auth.getSession().then(async ({ data, error }) => {
+      if (error) {
+        setMessage(`读取登录状态失败：${error.message}`);
+      }
+
+      await applySession(data.session);
+      if (isMounted) setIsAuthLoading(false);
     });
-  }, []);
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      window.setTimeout(() => {
+        void applySession(session);
+      }, 0);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, [loadCloudHistory]);
 
   useEffect(() => {
     if (!isAnalyzing) return;
@@ -267,12 +347,12 @@ export default function Home() {
     }));
   }, [report]);
 
-  function persistHistory(nextHistory: SavedReview[]) {
+  function persistLocalHistory(nextHistory: SavedReview[]) {
     setHistory(nextHistory);
     window.localStorage.setItem(historyKey, JSON.stringify(nextHistory));
   }
 
-  function handleLogin(event: FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const email = emailDraft.trim();
 
@@ -281,16 +361,82 @@ export default function Home() {
       return;
     }
 
-    setUserEmail(email);
-    window.localStorage.setItem(userKey, email);
-    setMessage("已进入账号。");
+    if (!supabase) {
+      setUserEmail(email);
+      window.localStorage.setItem(userKey, email);
+      setMessage("已进入本地体验账号。");
+      return;
+    }
+
+    setIsAuthLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: window.location.origin,
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setMessage("登录链接已发送，请打开邮箱完成登录。");
+    } catch (error) {
+      setMessage(error instanceof Error ? `发送登录链接失败：${error.message}` : "发送登录链接失败。");
+    } finally {
+      setIsAuthLoading(false);
+    }
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    if (supabase) {
+      setIsAuthLoading(true);
+      const { error } = await supabase.auth.signOut();
+
+      if (error) {
+        setMessage(`退出失败：${error.message}`);
+        setIsAuthLoading(false);
+        return;
+      }
+    }
+
     setUserEmail("");
+    setUserId("");
     setEmailDraft("");
+    setHistory([]);
+    setReport(null);
     window.localStorage.removeItem(userKey);
     setMessage("已退出。");
+    setIsAuthLoading(false);
+  }
+
+  async function saveReview(inputToSave: ReviewInput, reportToSave: ReviewReport) {
+    if (!supabase || !userId) {
+      const saved: SavedReview = {
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+        userEmail,
+        input: inputToSave,
+        report: reportToSave,
+      };
+      persistLocalHistory([saved, ...history].slice(0, 30));
+      return saved;
+    }
+
+    const { data, error } = await supabase
+      .from("review_reports")
+      .insert(reviewInputToInsert(userId, inputToSave, reportToSave))
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    const saved = reviewRowToSavedReview(data, userEmail);
+    setHistory([saved, ...history].slice(0, 30));
+    return saved;
   }
 
   async function handleDocxUpload(file: File | null) {
@@ -326,8 +472,18 @@ export default function Home() {
   }
 
   async function handleAnalyze() {
+    if (isAuthLoading) {
+      setMessage("正在读取登录状态，请稍后再试。");
+      return;
+    }
+
     if (!userEmail) {
       setMessage("请先登录。");
+      return;
+    }
+
+    if (supabase && !userId) {
+      setMessage("请先通过邮箱链接完成云端登录。");
       return;
     }
 
@@ -355,15 +511,22 @@ export default function Home() {
       setReport(data.report);
       setAnalysisMode(data.mode || null);
 
-      const saved: SavedReview = {
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-        userEmail,
-        input,
-        report: data.report,
-      };
-      persistHistory([saved, ...history].slice(0, 30));
-      setMessage(data.mode === "demo" ? "已生成演示报告，已自动保存。" : "已生成 AI 报告，已自动保存。");
+      try {
+        await saveReview(input, data.report);
+        setMessage(
+          data.mode === "demo"
+            ? "已生成演示报告，已自动保存。"
+            : authMode === "cloud"
+              ? "已生成 AI 报告，已保存到云端。"
+              : "已生成 AI 报告，已自动保存。",
+        );
+      } catch (error) {
+        setMessage(
+          error instanceof Error
+            ? `已生成报告，但保存失败：${error.message}`
+            : "已生成报告，但保存失败。",
+        );
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "分析失败。");
     } finally {
@@ -379,9 +542,22 @@ export default function Home() {
     setMessage("已打开历史报告。");
   }
 
-  function deleteSaved(saved: SavedReview) {
+  async function deleteSaved(saved: SavedReview) {
+    if (supabase && userId) {
+      const { error } = await supabase.from("review_reports").delete().eq("id", saved.id);
+
+      if (error) {
+        setMessage(`删除云端历史失败：${error.message}`);
+        return;
+      }
+    }
+
     const nextHistory = history.filter((item) => item.id !== saved.id);
-    persistHistory(nextHistory);
+    if (supabase && userId) {
+      setHistory(nextHistory);
+    } else {
+      persistLocalHistory(nextHistory);
+    }
     setMessage("已删除历史报告。");
   }
 
@@ -422,17 +598,20 @@ export default function Home() {
         <section className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
           <aside className="flex flex-col gap-5">
             <form
-              onSubmit={handleLogin}
+              onSubmit={(event) => void handleLogin(event)}
               className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm"
             >
               <div className="mb-3 flex items-center gap-2">
                 <User className="h-4 w-4 text-teal-700" />
-                <h2 className="text-base font-semibold">登录</h2>
+                <h2 className="text-base font-semibold">
+                  {authMode === "cloud" ? "云端登录" : "本地体验登录"}
+                </h2>
               </div>
               <div className="flex gap-2">
                 <input
                   value={emailDraft}
                   onChange={(event) => setEmailDraft(event.target.value)}
+                  disabled={isAuthLoading}
                   className="min-w-0 flex-1 rounded-md border border-stone-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
                   placeholder="邮箱"
                   type="email"
@@ -440,23 +619,28 @@ export default function Home() {
                 {userEmail ? (
                   <button
                     type="button"
-                    onClick={handleLogout}
+                    onClick={() => void handleLogout()}
+                    disabled={isAuthLoading}
                     className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-stone-300 text-stone-700 transition hover:bg-stone-50"
                     title="退出"
                   >
-                    <LogOut className="h-4 w-4" />
+                    {isAuthLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
                   </button>
                 ) : (
                   <button
                     type="submit"
+                    disabled={isAuthLoading}
                     className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-teal-700 text-white transition hover:bg-teal-800"
                     title="登录"
                   >
-                    <LogIn className="h-4 w-4" />
+                    {isAuthLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
                   </button>
                 )}
               </div>
               {userEmail && <p className="mt-2 text-xs text-stone-500">{userEmail}</p>}
+              <p className="mt-2 text-xs text-stone-500">
+                {authMode === "cloud" ? "使用 Supabase Auth，历史会保存到云端。" : "未配置 Supabase，历史只保存在当前浏览器。"}
+              </p>
             </form>
 
             <section className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
@@ -564,7 +748,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={handleAnalyze}
-                  disabled={isAnalyzing}
+                  disabled={isAnalyzing || isAuthLoading}
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-stone-950 px-4 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
@@ -582,7 +766,12 @@ export default function Home() {
                 <h2 className="text-base font-semibold">历史</h2>
               </div>
               <div className="grid gap-2">
-                {history.length === 0 && (
+                {isHistoryLoading && (
+                  <p className="rounded-md bg-stone-50 px-3 py-3 text-sm text-stone-500">
+                    正在读取历史报告
+                  </p>
+                )}
+                {!isHistoryLoading && history.length === 0 && (
                   <p className="rounded-md bg-stone-50 px-3 py-3 text-sm text-stone-500">
                     暂无历史报告
                   </p>
@@ -617,7 +806,7 @@ export default function Home() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => deleteSaved(saved)}
+                        onClick={() => void deleteSaved(saved)}
                         className="inline-flex h-8 w-8 items-center justify-center rounded-md text-stone-500 transition hover:bg-white hover:text-rose-700"
                         title="删除历史"
                       >
