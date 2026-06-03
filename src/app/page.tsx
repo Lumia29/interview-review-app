@@ -748,21 +748,21 @@ export default function Home() {
               </p>
             </form>
 
-            <section className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
+            <section className="min-w-0 overflow-hidden rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
               <div className="mb-4 flex items-center gap-2">
                 <ClipboardList className="h-4 w-4 text-teal-700" />
                 <h2 className="text-base font-semibold">复盘输入</h2>
               </div>
 
-              <div className="grid gap-3">
-                <label className="grid gap-1 text-sm font-medium text-stone-700">
+              <div className="grid min-w-0 gap-3">
+                <label className="grid min-w-0 gap-1 text-sm font-medium text-stone-700">
                   岗位类型
                   <select
                     value={input.jobType}
                     onChange={(event) =>
                       setInput({ ...input, jobType: event.target.value as JobType })
                     }
-                    className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                    className="w-full min-w-0 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
                   >
                     {jobTypes.map((type) => (
                       <option key={type}>{type}</option>
@@ -770,52 +770,52 @@ export default function Home() {
                   </select>
                 </label>
 
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                  <label className="grid gap-1 text-sm font-medium text-stone-700">
+                <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                  <label className="grid min-w-0 gap-1 text-sm font-medium text-stone-700">
                     公司
                     <input
                       value={input.company}
                       onChange={(event) => setInput({ ...input, company: event.target.value })}
-                      className="rounded-md border border-stone-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                      className="w-full min-w-0 rounded-md border border-stone-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
                     />
                   </label>
 
-                  <label className="grid gap-1 text-sm font-medium text-stone-700">
+                  <label className="grid min-w-0 gap-1 text-sm font-medium text-stone-700">
                     面试轮次
                     <input
                       value={input.interviewRound}
                       onChange={(event) =>
                         setInput({ ...input, interviewRound: event.target.value })
                       }
-                      className="rounded-md border border-stone-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                      className="w-full min-w-0 rounded-md border border-stone-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
                     />
                   </label>
                 </div>
 
-                <label className="grid gap-1 text-sm font-medium text-stone-700">
+                <label className="grid min-w-0 gap-1 text-sm font-medium text-stone-700">
                   岗位名称
                   <input
                     value={input.jobTitle}
                     onChange={(event) => setInput({ ...input, jobTitle: event.target.value })}
-                    className="rounded-md border border-stone-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                    className="w-full min-w-0 rounded-md border border-stone-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
                   />
                 </label>
 
-                <label className="grid gap-1 text-sm font-medium text-stone-700">
+                <label className="grid min-w-0 gap-1 text-sm font-medium text-stone-700">
                   岗位 JD
                   <textarea
                     value={input.jobDescription}
                     onChange={(event) =>
                       setInput({ ...input, jobDescription: event.target.value })
                     }
-                    className="min-h-24 resize-y rounded-md border border-stone-300 px-3 py-2 text-sm leading-6 outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                    className="min-h-24 w-full min-w-0 resize-y rounded-md border border-stone-300 px-3 py-2 text-sm leading-6 outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
                   />
                 </label>
 
-                <label className="grid gap-1 text-sm font-medium text-stone-700">
+                <label className="grid min-w-0 gap-1 text-sm font-medium text-stone-700">
                   文字稿
-                  <div className="rounded-md border border-dashed border-stone-300 bg-stone-50 px-3 py-3">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 rounded-md border border-dashed border-stone-300 bg-stone-50 px-3 py-3">
+                    <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex min-w-0 items-center gap-2 text-xs text-stone-600">
                         <FileText className="h-4 w-4 shrink-0 text-teal-700" />
                         <span className="truncate">
@@ -845,7 +845,7 @@ export default function Home() {
                   <textarea
                     value={input.transcript}
                     onChange={(event) => setInput({ ...input, transcript: event.target.value })}
-                    className="min-h-48 resize-y rounded-md border border-stone-300 px-3 py-2 text-sm leading-6 outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                    className="min-h-48 w-full min-w-0 resize-y rounded-md border border-stone-300 px-3 py-2 text-sm leading-6 outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
                     placeholder="粘贴面试文字稿"
                   />
                 </label>
