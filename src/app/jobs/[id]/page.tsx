@@ -22,9 +22,18 @@ import {
 } from "@/lib/supabase";
 import type { SavedJob, SavedReview } from "@/types/review";
 
+function safeDecodeURIComponent(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 export default function JobPage() {
   const params = useParams();
-  const jobId = String(params.id || "");
+  const rawJobId = String(params.id || "");
+  const jobId = safeDecodeURIComponent(rawJobId);
   const [job, setJob] = useState<SavedJob | null>(null);
   const [reviews, setReviews] = useState<SavedReview[]>([]);
   const [isLoading, setIsLoading] = useState(true);
