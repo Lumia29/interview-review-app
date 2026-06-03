@@ -35,6 +35,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { emptyInput } from "@/lib/demo-report";
 import {
   isSupabaseConfigured,
+  reviewInputToJobInsert,
   reviewInputToInsert,
   reviewRowToSavedReview,
   supabase,
@@ -65,6 +66,17 @@ type QuestionScoreDatum = {
   questionId: string;
 };
 
+type JobReviewGroup = {
+  id: string;
+  jobType: JobType;
+  company: string;
+  jobTitle: string;
+  jobDescription: string;
+  latestAt: string;
+  averageScore: number;
+  reviews: SavedReview[];
+};
+
 function scoreTone(score: number) {
   if (score >= 85) return "text-emerald-700 bg-emerald-50 border-emerald-200";
   if (score >= 75) return "text-sky-700 bg-sky-50 border-sky-200";
@@ -86,6 +98,61 @@ function inputFromSaved(saved: SavedReview): ReviewInput {
     ...saved.input,
     transcript: saved.input.transcript,
   };
+}
+
+function localJobId(input: ReviewInput) {
+  return [
+    "local",
+    input.jobType,
+    input.company.trim() || "未填公司",
+    input.jobTitle.trim() || "未填岗位",
+  ].join("::");
+}
+
+function groupSavedReviews(reviews: SavedReview[]): JobReviewGroup[] {
+  const groups = new Map<string, JobReviewGroup>();
+
+  for (const review of reviews) {
+    const groupId = review.jobId || localJobId(review.input);
+    const existing = groups.get(groupId);
+
+    if (existing) {
+      existing.reviews.push(review);
+      if (new Date(review.createdAt) > new Date(existing.latestAt)) {
+        existing.latestAt = review.createdAt;
+      }
+      continue;
+    }
+
+    groups.set(groupId, {
+      id: groupId,
+      jobType: review.input.jobType,
+      company: review.input.company,
+      jobTitle: review.input.jobTitle,
+      jobDescription: review.input.jobDescription,
+      latestAt: review.createdAt,
+      averageScore: review.report.overallScore,
+      reviews: [review],
+    });
+  }
+
+  return Array.from(groups.values())
+    .map((group) => {
+      const reviewsInGroup = [...group.reviews].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      const averageScore = Math.round(
+        reviewsInGroup.reduce((sum, review) => sum + review.report.overallScore, 0) /
+          reviewsInGroup.length,
+      );
+
+      return {
+        ...group,
+        reviews: reviewsInGroup,
+        averageScore,
+      };
+    })
+    .sort((a, b) => new Date(b.latestAt).getTime() - new Date(a.latestAt).getTime());
 }
 
 function escapeRegExp(value: string) {
@@ -347,6 +414,8 @@ export default function Home() {
     }));
   }, [report]);
 
+  const jobReviewGroups = useMemo(() => groupSavedReviews(history), [history]);
+
   function persistLocalHistory(nextHistory: SavedReview[]) {
     setHistory(nextHistory);
     window.localStorage.setItem(historyKey, JSON.stringify(nextHistory));
@@ -411,10 +480,58 @@ export default function Home() {
     setIsAuthLoading(false);
   }
 
+  async function getOrCreateCloudJob(inputToSave: ReviewInput) {
+    if (!supabase || !userId) return null;
+
+    const jobInsert = reviewInputToJobInsert(userId, inputToSave);
+    const baseQuery = supabase
+      .from("jobs")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("job_type", jobInsert.job_type)
+      .eq("job_title", jobInsert.job_title)
+      .limit(1);
+    const { data: existingJob, error: findError } = jobInsert.company
+      ? await baseQuery.eq("company", jobInsert.company).maybeSingle()
+      : await baseQuery.is("company", null).maybeSingle();
+
+    if (findError) {
+      throw findError;
+    }
+
+    if (existingJob) {
+      if (jobInsert.job_description && existingJob.job_description !== jobInsert.job_description) {
+        const { error: updateError } = await supabase
+          .from("jobs")
+          .update({ job_description: jobInsert.job_description })
+          .eq("id", existingJob.id);
+
+        if (updateError) {
+          throw updateError;
+        }
+      }
+
+      return existingJob.id;
+    }
+
+    const { data: createdJob, error: createError } = await supabase
+      .from("jobs")
+      .insert(jobInsert)
+      .select("*")
+      .single();
+
+    if (createError) {
+      throw createError;
+    }
+
+    return createdJob.id;
+  }
+
   async function saveReview(inputToSave: ReviewInput, reportToSave: ReviewReport) {
     if (!supabase || !userId) {
       const saved: SavedReview = {
         id: crypto.randomUUID(),
+        jobId: localJobId(inputToSave),
         createdAt: new Date().toISOString(),
         userEmail,
         input: inputToSave,
@@ -424,9 +541,10 @@ export default function Home() {
       return saved;
     }
 
+    const jobId = await getOrCreateCloudJob(inputToSave);
     const { data, error } = await supabase
       .from("review_reports")
-      .insert(reviewInputToInsert(userId, inputToSave, reportToSave))
+      .insert(reviewInputToInsert(userId, jobId, inputToSave, reportToSave))
       .select("*")
       .single();
 
@@ -763,7 +881,7 @@ export default function Home() {
             <section className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-center gap-2">
                 <History className="h-4 w-4 text-teal-700" />
-                <h2 className="text-base font-semibold">历史</h2>
+                <h2 className="text-base font-semibold">岗位与轮次</h2>
               </div>
               <div className="grid gap-2">
                 {isHistoryLoading && (
@@ -771,47 +889,82 @@ export default function Home() {
                     正在读取历史报告
                   </p>
                 )}
-                {!isHistoryLoading && history.length === 0 && (
+                {!isHistoryLoading && jobReviewGroups.length === 0 && (
                   <p className="rounded-md bg-stone-50 px-3 py-3 text-sm text-stone-500">
                     暂无历史报告
                   </p>
                 )}
-                {history.map((saved) => (
+                {jobReviewGroups.map((jobGroup) => (
                   <div
-                    key={saved.id}
-                    className="rounded-md border border-stone-200 transition hover:border-teal-300 hover:bg-teal-50"
+                    key={jobGroup.id}
+                    className="rounded-md border border-stone-200 bg-stone-50"
                   >
-                    <button
-                      type="button"
-                      onClick={() => openSaved(saved)}
-                      className="w-full px-3 py-3 text-left"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold text-stone-900">
-                          {saved.input.company || "未填公司"}
+                    <div className="border-b border-stone-200 px-3 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-stone-900">
+                            {jobGroup.company || "未填公司"}
+                          </div>
+                          <div className="mt-1 line-clamp-2 text-xs leading-5 text-stone-600">
+                            {jobGroup.jobTitle || "未填岗位"}
+                          </div>
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-md border px-2 py-1 text-xs font-semibold ${scoreTone(
+                            jobGroup.averageScore,
+                          )}`}
+                        >
+                          均分 {jobGroup.averageScore}
                         </span>
-                        <span className="text-xs text-stone-500">{dateLabel(saved.createdAt)}</span>
                       </div>
-                      <p className="mt-1 line-clamp-2 text-xs text-stone-600">
-                        {saved.input.jobTitle} · {saved.input.interviewRound}
-                      </p>
-                    </button>
-                    <div className="flex items-center justify-between gap-2 px-3 pb-3">
-                      <span
-                        className={`inline-flex rounded-md border px-2 py-1 text-xs font-semibold ${scoreTone(
-                          saved.report.overallScore,
-                        )}`}
-                      >
-                        {saved.report.overallScore} / 100
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => void deleteSaved(saved)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-stone-500 transition hover:bg-white hover:text-rose-700"
-                        title="删除历史"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-500">
+                        <span className="rounded-md bg-white px-2 py-1">{jobGroup.jobType}</span>
+                        <span>{jobGroup.reviews.length} 轮</span>
+                        <span>最近 {dateLabel(jobGroup.latestAt)}</span>
+                      </div>
+                    </div>
+                    <div className="grid gap-1 p-2">
+                      {jobGroup.reviews.map((saved) => (
+                        <div
+                          key={saved.id}
+                          className="rounded-md border border-transparent bg-white transition hover:border-teal-300 hover:bg-teal-50"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => openSaved(saved)}
+                            className="w-full px-3 py-2 text-left"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="truncate text-xs font-semibold text-stone-800">
+                                {saved.input.interviewRound || "未填轮次"}
+                              </span>
+                              <span className="shrink-0 text-xs text-stone-500">
+                                {dateLabel(saved.createdAt)}
+                              </span>
+                            </div>
+                            <p className="mt-1 line-clamp-1 text-xs text-stone-500">
+                              {saved.report.summary}
+                            </p>
+                          </button>
+                          <div className="flex items-center justify-between gap-2 px-3 pb-2">
+                            <span
+                              className={`inline-flex rounded-md border px-2 py-1 text-xs font-semibold ${scoreTone(
+                                saved.report.overallScore,
+                              )}`}
+                            >
+                              {saved.report.overallScore} / 100
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void deleteSaved(saved)}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-stone-500 transition hover:bg-white hover:text-rose-700"
+                              title="删除历史"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}

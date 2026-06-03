@@ -23,6 +23,16 @@ export type ReviewInput = {
   transcript: string;
 };
 
+export type SavedJob = {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  jobType: JobType;
+  company: string;
+  jobTitle: string;
+  jobDescription: string;
+};
+
 export type QuestionReview = {
   id: string;
   question: string;
@@ -67,6 +77,7 @@ export type ReviewReport = {
 
 export type SavedReview = {
   id: string;
+  jobId?: string;
   createdAt: string;
   userEmail: string;
   input: ReviewInput;

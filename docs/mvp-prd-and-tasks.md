@@ -159,18 +159,21 @@ MVP 暂不拆独立路由，先在工作台内展示完整报告。后续再拆�
 
 ### P1：接 Supabase 真登录与云端保存
 
-- [ ] 创建 Supabase 项目。
-- [ ] 执行 `supabase/schema.sql`。
-- [ ] 配置 Supabase URL 和 Anon Key。
-- [ ] 将本地历史保存切到云端表。
-- [ ] 增加用户只能查看自己数据的权限验证。
+- [x] 创建 Supabase 项目。
+- [x] 执行 `supabase/schema.sql`。
+- [x] 配置 Supabase URL 和 Anon Key。
+- [x] 接入 Supabase Auth 邮箱 Magic Link 真登录。
+- [x] 将本地历史保存切到云端 `review_reports` 表。
+- [x] 保留未配置 Supabase 时的本地体验模式。
+- [x] 支持删除云端历史报告。
+- [x] 增加用户只能查看自己数据的权限验证。
 
 ### P2：报告体验增强
 
 - [ ] 拆分报告详情页。
 - [ ] 增加岗位详情页。
 - [ ] 增加同一岗位多轮趋势图。
-- [ ] 支持删除历史报告。
+- [x] 支持删除历史报告。
 - [ ] 支持 Markdown 导出。
 
 ### P3：后续版本
