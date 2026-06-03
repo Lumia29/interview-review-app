@@ -31,6 +31,7 @@ import {
   YAxis,
 } from "recharts";
 import type { Session } from "@supabase/supabase-js";
+import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { emptyInput } from "@/lib/demo-report";
 import {
@@ -91,13 +92,6 @@ function dateLabel(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
-}
-
-function inputFromSaved(saved: SavedReview): ReviewInput {
-  return {
-    ...saved.input,
-    transcript: saved.input.transcript,
-  };
 }
 
 function localJobId(input: ReviewInput) {
@@ -653,13 +647,6 @@ export default function Home() {
     }
   }
 
-  function openSaved(saved: SavedReview) {
-    setInput(inputFromSaved(saved));
-    setReport(saved.report);
-    setAnalysisMode(null);
-    setMessage("已打开历史报告。");
-  }
-
   async function deleteSaved(saved: SavedReview) {
     if (supabase && userId) {
       const { error } = await supabase.from("review_reports").delete().eq("id", saved.id);
@@ -899,7 +886,10 @@ export default function Home() {
                     key={jobGroup.id}
                     className="rounded-md border border-stone-200 bg-stone-50"
                   >
-                    <div className="border-b border-stone-200 px-3 py-3">
+                    <Link
+                      href={`/jobs/${encodeURIComponent(jobGroup.id)}`}
+                      className="block border-b border-stone-200 px-3 py-3 transition hover:bg-white"
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="truncate text-sm font-semibold text-stone-900">
@@ -922,17 +912,16 @@ export default function Home() {
                         <span>{jobGroup.reviews.length} 轮</span>
                         <span>最近 {dateLabel(jobGroup.latestAt)}</span>
                       </div>
-                    </div>
+                    </Link>
                     <div className="grid gap-1 p-2">
                       {jobGroup.reviews.map((saved) => (
                         <div
                           key={saved.id}
                           className="rounded-md border border-transparent bg-white transition hover:border-teal-300 hover:bg-teal-50"
                         >
-                          <button
-                            type="button"
-                            onClick={() => openSaved(saved)}
-                            className="w-full px-3 py-2 text-left"
+                          <Link
+                            href={`/reports/${saved.id}`}
+                            className="block w-full px-3 py-2 text-left"
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="truncate text-xs font-semibold text-stone-800">
@@ -945,7 +934,7 @@ export default function Home() {
                             <p className="mt-1 line-clamp-1 text-xs text-stone-500">
                               {saved.report.summary}
                             </p>
-                          </button>
+                          </Link>
                           <div className="flex items-center justify-between gap-2 px-3 pb-2">
                             <span
                               className={`inline-flex rounded-md border px-2 py-1 text-xs font-semibold ${scoreTone(
