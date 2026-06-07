@@ -65,9 +65,45 @@ Site URL: http://localhost:3000
 Redirect URLs: http://localhost:3000
 ```
 
-生产部署后，把正式域名也加入 Site URL 和 Redirect URLs。
+生产部署后，把正式域名也加入 Site URL 和 Redirect URLs。例如当前 Vercel 正式地址：
+
+```text
+Site URL: https://interview-review-3jbwocvzh-henry135235-gmailcoms-projects.vercel.app
+Redirect URLs:
+http://localhost:3000
+https://interview-review-3jbwocvzh-henry135235-gmailcoms-projects.vercel.app
+```
+
+如果后续绑定自定义域名，也要把自定义域名加入 Redirect URLs，并把 Site URL 改成用户实际访问的主域名。
 
 登录方式使用邮箱 magic link。输入邮箱后，Supabase 会发送登录链接；点击邮件里的链接回到应用后，历史报告会从 `review_reports` 读取，并按当前登录用户隔离。
+
+## Vercel 生产部署
+
+项目推送到 `main` 后，Vercel 通常会自动重新部署。生产环境需要在 Vercel Project Settings -> Environment Variables 中配置以下变量，并至少勾选 Production：
+
+```bash
+OPENAI_API_KEY=
+OPENAI_BASE_URL=
+OPENAI_MODEL=gpt-5.2
+OPENAI_FAST_MODEL=
+OPENAI_TIMEOUT_MS=120000
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+```
+
+如果 OpenAI-compatible 服务使用 `OPENAI_API_BASE`，也可以配置该变量；代码会优先读取 `OPENAI_BASE_URL`，再读取 `OPENAI_API_BASE`。配置或修改生产环境变量后，需要重新部署一次生产环境，运行中的部署才会读取新值。
+
+生产上线验收建议：
+
+1. 打开 Vercel 正式网址，确认首页正常加载且没有进入本地体验模式。
+2. 使用邮箱 magic link 登录，确认登录后页面显示当前邮箱。
+3. 生成一份真实或测试文字稿复盘，确认报告出现在历史记录中。
+4. 打开岗位详情页和报告详情页，确认云端数据可读取。
+5. 在报告详情页测试复制 `.md`、下载 `.md`。
+6. 在首页历史记录中删除一份测试报告，确认会先弹出删除确认，确认后历史记录消失。
+
+如果正式网址返回 Vercel 的 `401 Unauthorized` 或访问保护页，先在 Vercel 项目里关闭 Deployment Protection，或使用已授权的团队账号访问；否则外部用户无法进入应用，也无法完成 Supabase magic link 回跳验收。
 
 ## 文档
 
