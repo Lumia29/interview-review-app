@@ -9,13 +9,16 @@ import {
   ClipboardList,
   FileText,
   History,
+  KeyRound,
   Loader2,
   LogIn,
   LogOut,
+  Mail,
   Sparkles,
   Trash2,
   Upload,
   User,
+  UserPlus,
 } from "lucide-react";
 import {
   Bar,
@@ -78,15 +81,36 @@ type JobReviewGroup = {
   reviews: SavedReview[];
 };
 
-function loginErrorMessage(error: unknown) {
+type AuthView = "password" | "signup" | "magic" | "reset";
+
+function authErrorMessage(error: unknown, fallback: string) {
   const rawMessage = error instanceof Error ? error.message : "";
   const normalized = rawMessage.toLowerCase();
 
   if (normalized.includes("rate limit")) {
-    return "登录邮件发送太频繁了。请先不要重复点击，稍等一段时间后再试；如果邮箱里已经有登录链接，直接点那封邮件里的链接即可。";
+    return "请求太频繁了。请先不要重复点击，稍等一段时间后再试。";
   }
 
-  return rawMessage ? `发送登录链接失败：${rawMessage}` : "发送登录链接失败。";
+  if (
+    normalized.includes("invalid login credentials") ||
+    normalized.includes("invalid credentials")
+  ) {
+    return "邮箱或密码不正确。";
+  }
+
+  if (normalized.includes("email not confirmed")) {
+    return "请先打开邮箱确认账号后再登录。";
+  }
+
+  if (normalized.includes("password") && normalized.includes("characters")) {
+    return "密码长度不符合要求，请至少输入 6 位。";
+  }
+
+  if (normalized.includes("user already registered") || normalized.includes("already registered")) {
+    return "这个邮箱已注册。请直接登录，或使用“忘记密码 / 设置密码”。";
+  }
+
+  return rawMessage ? `${fallback}：${rawMessage}` : fallback;
 }
 
 function scoreTone(score: number) {
@@ -284,6 +308,8 @@ export default function Home() {
   const [userEmail, setUserEmail] = useState("");
   const [userId, setUserId] = useState("");
   const [emailDraft, setEmailDraft] = useState("");
+  const [passwordDraft, setPasswordDraft] = useState("");
+  const [authView, setAuthView] = useState<AuthView>("password");
   const [input, setInput] = useState<ReviewInput>(emptyInput);
   const [report, setReport] = useState<ReviewReport | null>(null);
   const [history, setHistory] = useState<SavedReview[]>([]);
@@ -452,9 +478,10 @@ export default function Home() {
     window.localStorage.setItem(historyKey, JSON.stringify(nextHistory));
   }
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+  async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const email = emailDraft.trim();
+    const password = passwordDraft.trim();
 
     if (!email) {
       setMessage("请输入邮箱。");
@@ -468,8 +495,63 @@ export default function Home() {
       return;
     }
 
+    if (authView !== "magic" && authView !== "reset" && password.length < 6) {
+      setMessage("密码至少需要 6 位。");
+      return;
+    }
+
     setIsAuthLoading(true);
     try {
+      if (authView === "password") {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        setPasswordDraft("");
+        setMessage("已登录。");
+        return;
+      }
+
+      if (authView === "signup") {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: window.location.origin,
+          },
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        setPasswordDraft("");
+        setMessage(
+          data.session
+            ? "注册成功，已登录。"
+            : "注册成功。请先打开邮箱确认账号后再登录。",
+        );
+        return;
+      }
+
+      if (authView === "reset") {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        setMessage("密码设置邮件已发送，请打开邮箱继续。");
+        return;
+      }
+
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
@@ -483,7 +565,15 @@ export default function Home() {
 
       setMessage("登录链接已发送，请打开邮箱完成登录。");
     } catch (error) {
-      setMessage(loginErrorMessage(error));
+      const fallback =
+        authView === "password"
+          ? "登录失败"
+          : authView === "signup"
+            ? "注册失败"
+            : authView === "reset"
+              ? "发送密码设置邮件失败"
+              : "发送登录链接失败";
+      setMessage(authErrorMessage(error, fallback));
     } finally {
       setIsAuthLoading(false);
     }
@@ -504,6 +594,8 @@ export default function Home() {
     setUserEmail("");
     setUserId("");
     setEmailDraft("");
+    setPasswordDraft("");
+    setAuthView("password");
     setHistory([]);
     setReport(null);
     window.localStorage.removeItem(userKey);
@@ -632,7 +724,7 @@ export default function Home() {
     }
 
     if (supabase && !userId) {
-      setMessage("请先通过邮箱链接完成云端登录。");
+      setMessage("请先完成云端登录。");
       return;
     }
 
@@ -748,7 +840,7 @@ export default function Home() {
         <section className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
           <aside className="flex flex-col gap-5">
             <form
-              onSubmit={(event) => void handleLogin(event)}
+              onSubmit={(event) => void handleAuthSubmit(event)}
               className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm"
             >
               <div className="mb-3 flex items-center gap-2">
@@ -757,39 +849,147 @@ export default function Home() {
                   {authMode === "cloud" ? "云端登录" : "本地体验登录"}
                 </h2>
               </div>
-              <div className="flex gap-2">
-                <input
-                  value={emailDraft}
-                  onChange={(event) => setEmailDraft(event.target.value)}
-                  disabled={isAuthLoading}
-                  className="min-w-0 flex-1 rounded-md border border-stone-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
-                  placeholder="邮箱"
-                  type="email"
-                />
-                {userEmail ? (
+
+              {userEmail ? (
+                <div>
+                  <div className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-stone-800">
+                      <User className="h-4 w-4 text-teal-700" />
+                      <span className="min-w-0 truncate">{userEmail}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-stone-500">
+                      历史报告会按当前账号保存和读取。
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => void handleLogout()}
                     disabled={isAuthLoading}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-stone-300 text-stone-700 transition hover:bg-stone-50"
-                    title="退出"
+                    className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isAuthLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+                    {isAuthLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <LogOut className="h-4 w-4" />
+                    )}
+                    退出登录
                   </button>
-                ) : (
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {authMode === "cloud" && (
+                    <div className="grid grid-cols-2 gap-1 rounded-md bg-stone-100 p-1">
+                      <button
+                        type="button"
+                        onClick={() => setAuthView("password")}
+                        className={`h-8 rounded px-2 text-xs font-semibold transition ${
+                          authView === "password"
+                            ? "bg-white text-stone-950 shadow-sm"
+                            : "text-stone-600 hover:text-stone-950"
+                        }`}
+                      >
+                        密码登录
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAuthView("signup")}
+                        className={`h-8 rounded px-2 text-xs font-semibold transition ${
+                          authView === "signup"
+                            ? "bg-white text-stone-950 shadow-sm"
+                            : "text-stone-600 hover:text-stone-950"
+                        }`}
+                      >
+                        注册账号
+                      </button>
+                    </div>
+                  )}
+
+                  <label className="grid gap-1 text-sm font-medium text-stone-700">
+                    邮箱
+                    <input
+                      value={emailDraft}
+                      onChange={(event) => setEmailDraft(event.target.value)}
+                      disabled={isAuthLoading}
+                      className="min-w-0 rounded-md border border-stone-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                      placeholder="name@example.com"
+                      type="email"
+                    />
+                  </label>
+
+                  {authMode === "cloud" && authView !== "magic" && authView !== "reset" && (
+                    <label className="grid gap-1 text-sm font-medium text-stone-700">
+                      密码
+                      <input
+                        value={passwordDraft}
+                        onChange={(event) => setPasswordDraft(event.target.value)}
+                        disabled={isAuthLoading}
+                        className="min-w-0 rounded-md border border-stone-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                        placeholder="至少 6 位"
+                        type="password"
+                      />
+                    </label>
+                  )}
+
                   <button
                     type="submit"
                     disabled={isAuthLoading}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-teal-700 text-white transition hover:bg-teal-800"
-                    title="登录"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-teal-700 px-3 text-sm font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isAuthLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+                    {isAuthLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : authView === "signup" ? (
+                      <UserPlus className="h-4 w-4" />
+                    ) : authView === "magic" ? (
+                      <Mail className="h-4 w-4" />
+                    ) : authView === "reset" ? (
+                      <KeyRound className="h-4 w-4" />
+                    ) : (
+                      <LogIn className="h-4 w-4" />
+                    )}
+                    {authMode !== "cloud"
+                      ? "进入本地体验"
+                      : authView === "signup"
+                        ? "注册"
+                        : authView === "magic"
+                          ? "发送登录链接"
+                          : authView === "reset"
+                            ? "发送设置密码邮件"
+                            : "登录"}
                   </button>
-                )}
-              </div>
-              {userEmail && <p className="mt-2 text-xs text-stone-500">{userEmail}</p>}
+
+                  {authMode === "cloud" && (
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthView(authView === "reset" ? "password" : "reset");
+                          setPasswordDraft("");
+                        }}
+                        className="font-semibold text-teal-700 transition hover:text-teal-900"
+                      >
+                        {authView === "reset" ? "返回密码登录" : "忘记密码 / 设置密码"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthView(authView === "magic" ? "password" : "magic");
+                          setPasswordDraft("");
+                        }}
+                        className="font-semibold text-teal-700 transition hover:text-teal-900"
+                      >
+                        {authView === "magic" ? "返回密码登录" : "使用邮箱链接登录"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <p className="mt-2 text-xs text-stone-500">
-                {authMode === "cloud" ? "使用 Supabase Auth，历史会保存到云端。" : "未配置 Supabase，历史只保存在当前浏览器。"}
+                {authMode === "cloud"
+                  ? authView === "reset"
+                    ? "Magic Link 老账号可用同一邮箱设置密码，历史报告仍会保留在原账号下。"
+                    : "使用 Supabase Auth，历史会保存到云端；Magic Link 仍可作为备用登录方式。"
+                  : "未配置 Supabase，历史只保存在当前浏览器。"}
               </p>
             </form>
 

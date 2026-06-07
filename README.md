@@ -71,12 +71,14 @@ Redirect URLs: http://localhost:3000
 Site URL: https://interview-review-3jbwocvzh-henry135235-gmailcoms-projects.vercel.app
 Redirect URLs:
 http://localhost:3000
+http://localhost:3000/reset-password
 https://interview-review-3jbwocvzh-henry135235-gmailcoms-projects.vercel.app
+https://interview-review-3jbwocvzh-henry135235-gmailcoms-projects.vercel.app/reset-password
 ```
 
 如果后续绑定自定义域名，也要把自定义域名加入 Redirect URLs，并把 Site URL 改成用户实际访问的主域名。
 
-登录方式使用邮箱 magic link。输入邮箱后，Supabase 会发送登录链接；点击邮件里的链接回到应用后，历史报告会从 `review_reports` 读取，并按当前登录用户隔离。
+登录方式支持邮箱 + 密码登录，同时保留邮箱 magic link 作为备用入口。Magic Link 老用户可以使用“忘记密码 / 设置密码”给同一个邮箱设置密码；点击邮件里的设置密码链接回到 `/reset-password` 后，输入新密码即可。登录后历史报告会从 `review_reports` 读取，并按当前登录用户隔离。
 
 ## Vercel 生产部署
 
@@ -97,13 +99,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 生产上线验收建议：
 
 1. 打开 Vercel 正式网址，确认首页正常加载且没有进入本地体验模式。
-2. 使用邮箱 magic link 登录，确认登录后页面显示当前邮箱。
+2. 使用邮箱 + 密码登录，确认登录后页面显示当前邮箱；必要时再测试 magic link 备用登录。
 3. 生成一份真实或测试文字稿复盘，确认报告出现在历史记录中。
 4. 打开岗位详情页和报告详情页，确认云端数据可读取。
 5. 在报告详情页测试复制 `.md`、下载 `.md`。
 6. 在首页历史记录中删除一份测试报告，确认会先弹出删除确认，确认后历史记录消失。
 
-如果正式网址返回 Vercel 的 `401 Unauthorized` 或访问保护页，先在 Vercel 项目里关闭 Deployment Protection，或使用已授权的团队账号访问；否则外部用户无法进入应用，也无法完成 Supabase magic link 回跳验收。
+如果正式网址返回 Vercel 的 `401 Unauthorized` 或访问保护页，先在 Vercel 项目里关闭 Deployment Protection，或使用已授权的团队账号访问；否则外部用户无法进入应用，也无法完成 Supabase 登录和密码设置回跳验收。
 
 ## 文档
 
