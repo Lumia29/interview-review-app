@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, BarChart3, Check, ChevronDown, ChevronRight, Download } from "lucide-react";
+import { Activity, BarChart3, Check, ChevronDown, ChevronRight, Copy, Download } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -15,7 +15,7 @@ import {
   YAxis,
 } from "recharts";
 import { useMemo, useState } from "react";
-import { downloadMarkdown, scoreTone } from "@/lib/review-utils";
+import { downloadMarkdown, reportToMarkdown, scoreTone } from "@/lib/review-utils";
 import type { ReviewReport, SavedReview } from "@/types/review";
 
 type ReportDetailProps = {
@@ -114,6 +114,7 @@ function getReverseQuestions(report: ReviewReport) {
 
 export function ReportDetail({ saved, showExport = true }: ReportDetailProps) {
   const { input, report } = saved;
+  const [exportMessage, setExportMessage] = useState("");
   const chartData = useMemo(
     () => [
       { dimension: "逻辑", score: report.dimensions.logic },
@@ -140,6 +141,20 @@ export function ReportDetail({ saved, showExport = true }: ReportDetailProps) {
     });
   }
 
+  async function copyMarkdown() {
+    try {
+      await navigator.clipboard.writeText(reportToMarkdown(saved));
+      setExportMessage("Markdown 已复制。");
+    } catch {
+      setExportMessage("复制失败，请改用下载 Markdown。");
+    }
+  }
+
+  function handleDownloadMarkdown() {
+    downloadMarkdown(saved);
+    setExportMessage("Markdown 文件已开始下载。");
+  }
+
   return (
     <div className="grid gap-5">
       <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
@@ -152,14 +167,25 @@ export function ReportDetail({ saved, showExport = true }: ReportDetailProps) {
             <h2 className="mt-2 text-2xl font-semibold text-stone-950">{input.jobTitle}</h2>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-600">{report.summary}</p>
             {showExport && (
-              <button
-                type="button"
-                onClick={() => downloadMarkdown(saved)}
-                className="mt-4 inline-flex h-9 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 transition hover:bg-stone-50"
-              >
-                <Download className="h-4 w-4" />
-                导出 Markdown
-              </button>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void copyMarkdown()}
+                  className="inline-flex h-9 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 transition hover:bg-stone-50"
+                >
+                  <Copy className="h-4 w-4" />
+                  复制 Markdown
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadMarkdown}
+                  className="inline-flex h-9 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 transition hover:bg-stone-50"
+                >
+                  <Download className="h-4 w-4" />
+                  下载 .md
+                </button>
+                {exportMessage && <span className="text-xs text-stone-500">{exportMessage}</span>}
+              </div>
             )}
           </div>
           <div

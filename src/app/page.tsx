@@ -78,6 +78,17 @@ type JobReviewGroup = {
   reviews: SavedReview[];
 };
 
+function loginErrorMessage(error: unknown) {
+  const rawMessage = error instanceof Error ? error.message : "";
+  const normalized = rawMessage.toLowerCase();
+
+  if (normalized.includes("rate limit")) {
+    return "登录邮件发送太频繁了。请先不要重复点击，稍等一段时间后再试；如果邮箱里已经有登录链接，直接点那封邮件里的链接即可。";
+  }
+
+  return rawMessage ? `发送登录链接失败：${rawMessage}` : "发送登录链接失败。";
+}
+
 function scoreTone(score: number) {
   if (score >= 85) return "text-emerald-700 bg-emerald-50 border-emerald-200";
   if (score >= 75) return "text-sky-700 bg-sky-50 border-sky-200";
@@ -378,6 +389,32 @@ export default function Home() {
   }, [loadCloudHistory]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const jobTypeParam = params.get("jobType");
+    const company = params.get("company") || "";
+    const jobTitle = params.get("jobTitle") || "";
+    const jobDescription = params.get("jobDescription") || "";
+    const jobType = jobTypes.includes(jobTypeParam as JobType)
+      ? (jobTypeParam as JobType)
+      : undefined;
+
+    if (!jobType && !company && !jobTitle && !jobDescription) return;
+
+    queueMicrotask(() => {
+      setInput((current) => ({
+        ...current,
+        jobType: jobType || current.jobType,
+        company,
+        jobTitle,
+        jobDescription,
+        transcript: "",
+      }));
+      setReport(null);
+      setMessage("已带入岗位信息，请填写本轮轮次和文字稿。");
+    });
+  }, []);
+
+  useEffect(() => {
     if (!isAnalyzing) return;
 
     const timer = window.setInterval(() => {
@@ -446,7 +483,7 @@ export default function Home() {
 
       setMessage("登录链接已发送，请打开邮箱完成登录。");
     } catch (error) {
-      setMessage(error instanceof Error ? `发送登录链接失败：${error.message}` : "发送登录链接失败。");
+      setMessage(loginErrorMessage(error));
     } finally {
       setIsAuthLoading(false);
     }
@@ -648,6 +685,14 @@ export default function Home() {
   }
 
   async function deleteSaved(saved: SavedReview) {
+    const shouldDelete = window.confirm(
+      `确定删除「${saved.input.company || "未填公司"} · ${
+        saved.input.interviewRound || "未填轮次"
+      }」这份报告吗？删除后无法从应用内恢复。`,
+    );
+
+    if (!shouldDelete) return;
+
     if (supabase && userId) {
       const { error } = await supabase.from("review_reports").delete().eq("id", saved.id);
 

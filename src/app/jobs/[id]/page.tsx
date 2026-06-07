@@ -30,6 +30,17 @@ function safeDecodeURIComponent(value: string) {
   }
 }
 
+function newReviewHref(job: SavedJob) {
+  const params = new URLSearchParams({
+    jobType: job.jobType,
+    company: job.company,
+    jobTitle: job.jobTitle,
+    jobDescription: job.jobDescription,
+  });
+
+  return `/?${params.toString()}`;
+}
+
 export default function JobPage() {
   const params = useParams();
   const rawJobId = String(params.id || "");
@@ -189,6 +200,22 @@ export default function JobPage() {
                       {job.jobDescription}
                     </p>
                   )}
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Link
+                      href={newReviewHref(job)}
+                      className="inline-flex h-9 items-center rounded-md bg-stone-950 px-3 text-sm font-semibold text-white transition hover:bg-stone-800"
+                    >
+                      新建同岗位复盘
+                    </Link>
+                    {reviews[0] && (
+                      <Link
+                        href={`/reports/${reviews[0].id}`}
+                        className="inline-flex h-9 items-center rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 transition hover:bg-stone-50"
+                      >
+                        查看最新报告
+                      </Link>
+                    )}
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   <Metric label="轮次" value={`${reviews.length}`} />
