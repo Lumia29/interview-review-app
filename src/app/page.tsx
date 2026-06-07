@@ -2,6 +2,7 @@
 
 import {
   Activity,
+  ArrowUp,
   BarChart3,
   ChevronDown,
   ChevronRight,
@@ -57,7 +58,7 @@ type AnalyzeResponse = {
   error?: string;
 };
 
-type ExtractDocxResponse = {
+type ExtractDocumentResponse = {
   filename?: string;
   text?: string;
   warnings?: string[];
@@ -107,7 +108,7 @@ function authErrorMessage(error: unknown, fallback: string) {
   }
 
   if (normalized.includes("user already registered") || normalized.includes("already registered")) {
-    return "这个邮箱已注册。请直接登录，或使用“忘记密码 / 设置密码”。";
+    return "这个邮箱已注册。请直接登录，或使用“忘记密码”。";
   }
 
   return rawMessage ? `${fallback}：${rawMessage}` : fallback;
@@ -311,14 +312,15 @@ export default function Home() {
   const [passwordDraft, setPasswordDraft] = useState("");
   const [authView, setAuthView] = useState<AuthView>("password");
   const [input, setInput] = useState<ReviewInput>(emptyInput);
+  const [pendingPrefill, setPendingPrefill] = useState<ReviewInput | null>(null);
   const [report, setReport] = useState<ReviewReport | null>(null);
   const [history, setHistory] = useState<SavedReview[]>([]);
   const [isAuthLoading, setIsAuthLoading] = useState(isSupabaseConfigured);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisStageIndex, setAnalysisStageIndex] = useState<number | null>(null);
-  const [isExtractingDocx, setIsExtractingDocx] = useState(false);
-  const [docxFileName, setDocxFileName] = useState("");
+  const [isExtractingDocument, setIsExtractingDocument] = useState(false);
+  const [documentFileName, setDocumentFileName] = useState("");
   const [message, setMessage] = useState("");
   const [analysisMode, setAnalysisMode] = useState<"demo" | "openai" | "compatible" | null>(
     null,
@@ -427,18 +429,31 @@ export default function Home() {
     if (!jobType && !company && !jobTitle && !jobDescription) return;
 
     queueMicrotask(() => {
-      setInput((current) => ({
-        ...current,
-        jobType: jobType || current.jobType,
+      setPendingPrefill({
+        ...emptyInput,
+        jobType: jobType || emptyInput.jobType,
         company,
         jobTitle,
         jobDescription,
         transcript: "",
-      }));
-      setReport(null);
-      setMessage("已带入岗位信息，请填写本轮轮次和文字稿。");
+      });
+      setMessage("检测到岗位信息，如需沿用可点击输入区里的“带入岗位信息”。");
     });
   }, []);
+
+  function applyPendingPrefill() {
+    if (!pendingPrefill) return;
+
+    setInput((current) => ({
+      ...current,
+      ...pendingPrefill,
+      interviewRound: current.interviewRound,
+      transcript: "",
+    }));
+    setPendingPrefill(null);
+    setReport(null);
+    setMessage("已带入岗位信息，请填写本轮轮次和文字稿。");
+  }
 
   useEffect(() => {
     if (!isAnalyzing) return;
@@ -680,11 +695,11 @@ export default function Home() {
     return saved;
   }
 
-  async function handleDocxUpload(file: File | null) {
+  async function handleDocumentUpload(file: File | null) {
     if (!file) return;
 
-    setIsExtractingDocx(true);
-    setDocxFileName(file.name);
+    setIsExtractingDocument(true);
+    setDocumentFileName(file.name);
     setMessage("");
 
     try {
@@ -695,7 +710,7 @@ export default function Home() {
         method: "POST",
         body: formData,
       });
-      const data = (await response.json()) as ExtractDocxResponse;
+      const data = (await response.json()) as ExtractDocumentResponse;
 
       if (!response.ok || !data.text) {
         throw new Error(data.error || "文档解析失败。");
@@ -708,7 +723,7 @@ export default function Home() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "文档解析失败。");
     } finally {
-      setIsExtractingDocx(false);
+      setIsExtractingDocument(false);
     }
   }
 
@@ -807,6 +822,13 @@ export default function Home() {
     document.getElementById(`question-${questionId}`)?.scrollIntoView({
       behavior: "smooth",
       block: "start",
+    });
+  }
+
+  function scrollToTop() {
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
     });
   }
 
@@ -967,7 +989,7 @@ export default function Home() {
                         }}
                         className="font-semibold text-teal-700 transition hover:text-teal-900"
                       >
-                        {authView === "reset" ? "返回密码登录" : "忘记密码 / 设置密码"}
+                        {authView === "reset" ? "返回密码登录" : "忘记密码"}
                       </button>
                       <button
                         type="button"
@@ -988,7 +1010,7 @@ export default function Home() {
                 {authMode === "cloud"
                   ? authView === "reset"
                     ? "Magic Link 老账号可用同一邮箱设置密码，历史报告仍会保留在原账号下。"
-                    : "使用 Supabase Auth，历史会保存到云端；Magic Link 仍可作为备用登录方式。"
+                    : "使用 Supabase Auth，历史会保存到云端。"
                   : "未配置 Supabase，历史只保存在当前浏览器。"}
               </p>
             </form>
@@ -1000,6 +1022,32 @@ export default function Home() {
               </div>
 
               <div className="grid min-w-0 gap-3">
+                {pendingPrefill && (
+                  <div className="rounded-md border border-teal-200 bg-teal-50 px-3 py-3 text-sm text-teal-900">
+                    <p className="font-semibold">检测到可带入的岗位信息</p>
+                    <p className="mt-1 text-xs leading-5 text-teal-800">
+                      {pendingPrefill.company || "未填公司"} ·{" "}
+                      {pendingPrefill.jobTitle || "未填岗位"}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={applyPendingPrefill}
+                        className="inline-flex h-8 items-center rounded-md bg-teal-700 px-3 text-xs font-semibold text-white transition hover:bg-teal-800"
+                      >
+                        带入岗位信息
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPendingPrefill(null)}
+                        className="inline-flex h-8 items-center rounded-md border border-teal-200 bg-white px-3 text-xs font-semibold text-teal-800 transition hover:bg-teal-100"
+                      >
+                        忽略
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <label className="grid min-w-0 gap-1 text-sm font-medium text-stone-700">
                   岗位类型
                   <select
@@ -1022,6 +1070,7 @@ export default function Home() {
                       value={input.company}
                       onChange={(event) => setInput({ ...input, company: event.target.value })}
                       className="w-full min-w-0 rounded-md border border-stone-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                      placeholder="例如：阿里"
                     />
                   </label>
 
@@ -1033,6 +1082,7 @@ export default function Home() {
                         setInput({ ...input, interviewRound: event.target.value })
                       }
                       className="w-full min-w-0 rounded-md border border-stone-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                      placeholder="例如：一面（业务面）"
                     />
                   </label>
                 </div>
@@ -1043,6 +1093,7 @@ export default function Home() {
                     value={input.jobTitle}
                     onChange={(event) => setInput({ ...input, jobTitle: event.target.value })}
                     className="w-full min-w-0 rounded-md border border-stone-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                    placeholder="例如：AI 产品运营"
                   />
                 </label>
 
@@ -1054,6 +1105,7 @@ export default function Home() {
                       setInput({ ...input, jobDescription: event.target.value })
                     }
                     className="min-h-24 w-full min-w-0 resize-y rounded-md border border-stone-300 px-3 py-2 text-sm leading-6 outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                    placeholder="粘贴岗位 JD，或简单写这个岗位主要负责什么"
                   />
                 </label>
 
@@ -1064,22 +1116,22 @@ export default function Home() {
                       <div className="flex min-w-0 items-center gap-2 text-xs text-stone-600">
                         <FileText className="h-4 w-4 shrink-0 text-teal-700" />
                         <span className="truncate">
-                          {docxFileName || "上传 .docx 后会自动提取文字并填入下方"}
+                          {documentFileName || "支持 .docx / .txt / .md，上传后会填入下方"}
                         </span>
                       </div>
                       <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md border border-stone-300 bg-white px-3 text-xs font-semibold text-stone-800 transition hover:bg-stone-100">
-                        {isExtractingDocx ? (
+                        {isExtractingDocument ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : (
                           <Upload className="h-3.5 w-3.5" />
                         )}
-                        {isExtractingDocx ? "提取中" : "上传 docx"}
+                        {isExtractingDocument ? "提取中" : "上传文档"}
                         <input
                           type="file"
-                          accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                          disabled={isExtractingDocx}
+                          accept=".docx,.txt,.md,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          disabled={isExtractingDocument}
                           onChange={(event) => {
-                            void handleDocxUpload(event.target.files?.[0] || null);
+                            void handleDocumentUpload(event.target.files?.[0] || null);
                             event.target.value = "";
                           }}
                           className="sr-only"
@@ -1419,6 +1471,15 @@ export default function Home() {
           </section>
         </section>
       </div>
+      <button
+        type="button"
+        onClick={scrollToTop}
+        className="fixed bottom-5 right-5 z-30 inline-flex h-10 w-10 items-center justify-center rounded-full border border-stone-300 bg-white text-stone-700 shadow-sm transition hover:border-teal-300 hover:bg-teal-50 hover:text-teal-800"
+        title="回到顶部"
+        aria-label="回到顶部"
+      >
+        <ArrowUp className="h-4 w-4" />
+      </button>
     </main>
   );
 }

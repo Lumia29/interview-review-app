@@ -164,7 +164,7 @@ export default function ResetPasswordPage() {
 
           {!isLoading && !session && (
             <p className="mt-3 rounded-md bg-amber-50 px-3 py-3 text-sm leading-6 text-amber-800">
-              没有检测到有效的密码设置会话。请回到首页重新发送“忘记密码 / 设置密码”邮件，然后从最新邮件链接进入。
+              没有检测到有效的密码设置会话。请回到首页重新发送“忘记密码”邮件，然后从最新邮件链接进入。
             </p>
           )}
 

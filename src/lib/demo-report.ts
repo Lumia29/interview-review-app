@@ -2,11 +2,10 @@ import type { ReviewInput, ReviewReport, ScoreDimensions } from "@/types/review"
 
 export const emptyInput: ReviewInput = {
   jobType: "运营",
-  company: "阿里",
-  jobTitle: "集团安全部-大模型安全策略运营",
-  interviewRound: "一面（业务面）",
-  jobDescription:
-    "紧跟海内外相关法律法规动态及 LLM 和智能体风险态势，构建风险矩阵，定义风险细则；构建护栏评测集，与算法深度合作，牵引护栏能力升级；支持业务提供安全解决方案。",
+  company: "",
+  jobTitle: "",
+  interviewRound: "",
+  jobDescription: "",
   transcript: "",
 };
 
