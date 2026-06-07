@@ -834,7 +834,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#f7f5f0] text-stone-950">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
+      <div className="flex w-full max-w-7xl flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8 2xl:mx-auto">
         <header className="flex flex-col gap-4 border-b border-stone-200 pb-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex items-center gap-2 text-sm font-medium text-teal-700">
